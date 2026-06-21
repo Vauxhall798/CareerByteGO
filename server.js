@@ -1,4 +1,6 @@
 require('dotenv').config();
+const dns = require('dns');
+if (dns && dns.setDefaultResultOrder) dns.setDefaultResultOrder('ipv4first');
 const express = require('express');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
@@ -229,7 +231,7 @@ app.post('/api/book-session', async (req, res) => {
       meetLink = `https://meet.google.com/mock-${crypto.randomUUID().substring(0, 8)}`;
     }
 
-    // Send confirmation emails
+    // Prepare confirmation email (send asynchronously so booking response is fast)
     const mailOptions = {
       from: `"CareerByteCode" <${process.env.EMAIL_USER}>`,
       to: [userEmail, ADMIN_EMAIL].join(', '),
@@ -248,64 +250,74 @@ app.post('/api/book-session', async (req, res) => {
       `
     };
 
-    // Prefer SendGrid (HTTP API) if configured — avoids SMTP/network blocking on some hosts
-    let emailSent = false;
-
-    if (process.env.SENDGRID_API_KEY) {
+    // Fire-and-forget email sending so frontend receives response immediately.
+    (async function sendConfirmationEmails(opts) {
       try {
-        const ok = await sendMailWithSendGrid(mailOptions);
-        if (ok) {
-          emailSent = true;
-        }
-      } catch (e) {
-        console.error('SendGrid attempt error:', e && e.message ? e.message : e);
-      }
-    }
+        console.log('🔔 Background: starting email send attempts');
+        let emailSent = false;
 
-    // Prefer password-based SMTP if app password is provided; otherwise try OAuth2
-    if (!emailSent && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-      try {
-        const ok = await sendMailWithPassword(mailOptions);
-        if (ok) {
-          emailSent = true;
-          console.log(`✅ Confirmation email sent (password) to ${userEmail} and ${ADMIN_EMAIL}`);
-        } else {
-          console.error('Password email send failed on all SMTP attempts');
-        }
-      } catch (emailError) {
-        console.error('Password email send error:', emailError && emailError.message ? emailError.message : emailError);
-      }
-    }
-
-    // If password auth not available or failed, attempt OAuth2
-    if (!emailSent && process.env.GOOGLE_REFRESH_TOKEN && process.env.EMAIL_USER && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-      try {
-        const accessTokenObj = await oauth2Client.getAccessToken();
-        const accessToken = accessTokenObj && accessTokenObj.token ? accessTokenObj.token : accessTokenObj;
-        const oauthTransporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: {
-            type: 'OAuth2',
-            user: process.env.EMAIL_USER,
-            clientId: process.env.GOOGLE_CLIENT_ID,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-            refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
-            accessToken
+        if (process.env.SENDGRID_API_KEY) {
+          try {
+            const ok = await sendMailWithSendGrid(opts);
+            if (ok) {
+              emailSent = true;
+              console.log('Background: sent via SendGrid');
+            }
+          } catch (e) {
+            console.error('SendGrid attempt error (background):', e && e.message ? e.message : e);
           }
-        });
-        await oauthTransporter.sendMail(mailOptions);
-        emailSent = true;
-        console.log(`✅ Confirmation email sent (OAuth2) to ${userEmail} and ${ADMIN_EMAIL}`);
-      } catch (emailError) {
-        console.error('OAuth2 email send error:', emailError && emailError.message ? emailError.message : emailError);
+        }
+
+        if (!emailSent && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+          try {
+            const ok = await sendMailWithPassword(opts);
+            if (ok) {
+              emailSent = true;
+              console.log('Background: sent via SMTP (password)');
+            } else {
+              console.error('Background: password email send failed on all SMTP attempts');
+            }
+          } catch (emailError) {
+            console.error('Background: Password email send error:', emailError && emailError.message ? emailError.message : emailError);
+          }
+        }
+
+        if (!emailSent && process.env.GOOGLE_REFRESH_TOKEN && process.env.EMAIL_USER && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+          try {
+            const accessTokenObj = await oauth2Client.getAccessToken();
+            const accessToken = accessTokenObj && accessTokenObj.token ? accessTokenObj.token : accessTokenObj;
+            const oauthTransporter = nodemailer.createTransport({
+              service: 'gmail',
+              auth: {
+                type: 'OAuth2',
+                user: process.env.EMAIL_USER,
+                clientId: process.env.GOOGLE_CLIENT_ID,
+                clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+                refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
+                accessToken
+              },
+              connectionTimeout: 10000,
+              greetingTimeout: 5000,
+              socketTimeout: 10000
+            });
+            await oauthTransporter.sendMail(opts);
+            emailSent = true;
+            console.log('Background: sent via OAuth2');
+          } catch (emailError) {
+            console.error('Background: OAuth2 email send error:', emailError && emailError.message ? emailError.message : emailError);
+          }
+        }
+
+        if (!emailSent) {
+          console.log('Background: No email credentials or all email methods failed. Would have sent to:', opts.to);
+          console.log('Background: Meet Link:', opts.html && opts.html.includes('href') ? 'present' : 'unknown');
+        }
+      } catch (bgErr) {
+        console.error('Background email worker error:', bgErr && bgErr.message ? bgErr.message : bgErr);
       }
-    }
+    })(mailOptions).catch(err => console.error('Failed to start background email sender:', err));
 
-    if (!emailSent) {
-      console.log('No email credentials or all email methods failed. Would have sent to:', mailOptions.to);
-      console.log('Meet Link:', meetLink);
-    }
-
+    // Return success immediately after calendar creation/fallback
     res.json({ success: true, meetLink });
 
   } catch (error) {
