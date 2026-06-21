@@ -252,12 +252,11 @@ app.post('/api/book-session', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`\n🚀 Server running on http://localhost:${PORT}`);
+  console.log(`\n🚀 Server running on ${BASE_URL} (local port ${PORT})`);
   if (!process.env.GOOGLE_REFRESH_TOKEN) {
     console.log(`\n⚠️  Google Calendar not authorized yet.`);
-    console.log(`   → Open http://localhost:${PORT}/auth in your browser to authorize.\n`);
+    console.log(`   → Open ${BASE_URL}/auth in your browser to authorize.\n`);
   } else {
     console.log('✅ Google Calendar authorized.\n');
   }
