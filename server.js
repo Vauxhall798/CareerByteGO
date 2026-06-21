@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
 const { google } = require('googleapis');
+const sgMail = require('@sendgrid/mail');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -49,6 +50,27 @@ async function sendMailWithPassword(mailOptions) {
     }
   }
   return false;
+}
+
+// Helper: send email using SendGrid API
+async function sendMailWithSendGrid(mailOptions) {
+  try {
+    const key = process.env.SENDGRID_API_KEY;
+    if (!key) return false;
+    sgMail.setApiKey(key);
+    const msg = {
+      to: mailOptions.to.split(',').map(s => s.trim()),
+      from: mailOptions.from.replace(/^"?[^<]*"?\s*<([^>]+)>$/, '$1'),
+      subject: mailOptions.subject,
+      html: mailOptions.html
+    };
+    await sgMail.send(msg);
+    console.log('✅ Email sent via SendGrid');
+    return true;
+  } catch (err) {
+    console.error('SendGrid send error:', err && err.message ? err.message : err);
+    return false;
+  }
 }
 
 // Configure OAuth2 client (redirect URI uses BASE_URL)
@@ -226,10 +248,22 @@ app.post('/api/book-session', async (req, res) => {
       `
     };
 
-    // Prefer password-based SMTP if app password is provided; otherwise try OAuth2
+    // Prefer SendGrid (HTTP API) if configured — avoids SMTP/network blocking on some hosts
     let emailSent = false;
 
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    if (process.env.SENDGRID_API_KEY) {
+      try {
+        const ok = await sendMailWithSendGrid(mailOptions);
+        if (ok) {
+          emailSent = true;
+        }
+      } catch (e) {
+        console.error('SendGrid attempt error:', e && e.message ? e.message : e);
+      }
+    }
+
+    // Prefer password-based SMTP if app password is provided; otherwise try OAuth2
+    if (!emailSent && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
       try {
         const ok = await sendMailWithPassword(mailOptions);
         if (ok) {

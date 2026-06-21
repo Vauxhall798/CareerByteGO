@@ -15,6 +15,7 @@
     "express": "^5.2.1",
     "googleapis": "^173.0.0",
     "nodemailer": "^9.0.1",
+    "@sendgrid/mail": "^7.9.0",
     "uuid": "^14.0.1"
   }
 }
