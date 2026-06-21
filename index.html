@@ -1784,11 +1784,19 @@ async function processPayment() {
       })
     });
     
-    if (!response.ok) {
+    // Always try to parse JSON body; some deployments may return non-2xx
+    // but still include `{ success: true }` when booking succeeded but
+    // email delivery failed. Treat that as a success for frontend UX.
+    let result = {};
+    try {
+      result = await response.json();
+    } catch (e) {
+      // ignore JSON parse errors
+    }
+
+    if (!response.ok && !(result && result.success)) {
       throw new Error('Failed to book session');
     }
-    
-    const result = await response.json();
 
     // Store booking details
     state.bookingDetails = {
