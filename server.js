@@ -20,6 +20,37 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@careerbytecode.com';
 
 // Note: transporter is created at send-time so we can support OAuth2 or password auth dynamically.
 
+// Helper: try sending email with password auth using common SMTP configs (465 then 587)
+async function sendMailWithPassword(mailOptions) {
+  const smtpConfigs = [
+    { host: 'smtp.gmail.com', port: 465, secure: true },
+    { host: 'smtp.gmail.com', port: 587, secure: false }
+  ];
+
+  for (const cfg of smtpConfigs) {
+    try {
+      const transporter = nodemailer.createTransport(Object.assign({}, cfg, {
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+        // timeouts to fail fast on blocked ports
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 10000,
+        pool: false
+      }));
+
+      // verify before sending to catch connection issues early
+      await transporter.verify();
+      await transporter.sendMail(mailOptions);
+      console.log(`✅ Password email sent using ${cfg.host}:${cfg.port}`);
+      return true;
+    } catch (err) {
+      console.error(`Password email send attempt failed (${cfg.host}:${cfg.port}):`, err && err.message ? err.message : err);
+      // continue to next config
+    }
+  }
+  return false;
+}
+
 // Configure OAuth2 client (redirect URI uses BASE_URL)
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
@@ -200,16 +231,13 @@ app.post('/api/book-session', async (req, res) => {
 
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
       try {
-        const pwdTransporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS
-          }
-        });
-        await pwdTransporter.sendMail(mailOptions);
-        emailSent = true;
-        console.log(`✅ Confirmation email sent (password) to ${userEmail} and ${ADMIN_EMAIL}`);
+        const ok = await sendMailWithPassword(mailOptions);
+        if (ok) {
+          emailSent = true;
+          console.log(`✅ Confirmation email sent (password) to ${userEmail} and ${ADMIN_EMAIL}`);
+        } else {
+          console.error('Password email send failed on all SMTP attempts');
+        }
       } catch (emailError) {
         console.error('Password email send error:', emailError && emailError.message ? emailError.message : emailError);
       }
