@@ -1773,7 +1773,7 @@ async function processPayment() {
   
   try {
     // Call backend to book session (creates Meet link and sends email)
-    const response = await fetch('http://localhost:3001/api/book-session', {
+    const response = await fetch('https://careerbytego.onrender.com/api/book-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

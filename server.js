@@ -11,16 +11,20 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Port and base URL (use deployed URL by default or override with BASE_URL)
+const PORT = process.env.PORT || 3001;
+const BASE_URL = process.env.BASE_URL || 'https://careerbytego.onrender.com';
+
 // Hardcoded admin email
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@careerbytecode.com';
 
 // Note: transporter is created at send-time so we can support OAuth2 or password auth dynamically.
 
-// Configure OAuth2 client
+// Configure OAuth2 client (redirect URI uses BASE_URL)
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  'http://localhost:3001/oauth2callback'
+  `${BASE_URL}/oauth2callback`
 );
 
 // Load refresh token from env if available
@@ -31,7 +35,7 @@ if (process.env.GOOGLE_REFRESH_TOKEN) {
 const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
 // ─── OAuth2 Authorization Route ──────────────────────────────────────────────
-// Visit http://localhost:3001/auth to start the one-time authorization flow
+// Visit <BASE_URL>/auth to start the one-time authorization flow
 app.get('/auth', (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
@@ -168,7 +172,7 @@ app.post('/api/book-session', async (req, res) => {
       }
     } else {
       console.log('No GOOGLE_REFRESH_TOKEN found. Using mock link.');
-      console.log('Visit http://localhost:3001/auth to authorize Google Calendar.');
+      console.log(`Visit ${BASE_URL}/auth to authorize Google Calendar.`);
       meetLink = `https://meet.google.com/mock-${crypto.randomUUID().substring(0, 8)}`;
     }
 

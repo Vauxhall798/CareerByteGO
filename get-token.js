@@ -1,10 +1,11 @@
 require('dotenv').config();
 const { google } = require('googleapis');
 
+const BASE_URL = process.env.BASE_URL || 'https://careerbytego.onrender.com';
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  'http://localhost:3001/oauth2callback'
+  `${BASE_URL}/oauth2callback`
 );
 
 const url = oauth2Client.generateAuthUrl({
@@ -15,7 +16,7 @@ const url = oauth2Client.generateAuthUrl({
 
 console.log('\n📋 Copy this URL and open it in your browser:\n');
 console.log(url);
-console.log('\nAfter authorizing, you will be redirected to localhost:3001 (which may show an error page).');
+console.log(`\nAfter authorizing, you will be redirected to ${BASE_URL} (which may show an error page).`);
 console.log('Copy the "code" parameter from the URL and paste it below.\n');
 
 const readline = require('readline');
